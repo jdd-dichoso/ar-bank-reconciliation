@@ -102,6 +102,26 @@ Both implementations were tested using the same controlled dataset.
 
 The Excel Power Query + VBA implementation reproduced the validated n8n results across all tracked reconciliation metrics.
 
+## Project Screenshots
+
+### Excel Reconciliation Control
+
+The Excel implementation uses Power Query for data preparation and VBA for the reconciliation process.
+
+![Excel Reconciliation Control](screenshots/Excel_Control.png)
+
+### Reconciliation Output
+
+The reconciliation output identifies matched records, structural exceptions, field-level discrepancies, exception reasons, and recommended investigation actions.
+
+![Reconciliation Output](screenshots/Reconciliation_Output.png)
+
+### Validation Results
+
+The Excel Power Query + VBA implementation was validated against the same expected results used for the n8n implementation.
+
+![Validation Results](screenshots/Validation_ALL_PASS.png)
+
 ## Technology
 
 - Microsoft Excel
