@@ -1,0 +1,10 @@
+let
+    Source = Excel.CurrentWorkbook(){[Name="Table3"]}[Content],
+    #"Changed Type" = Table.TransformColumnTypes(Source,{{"Bank_Transaction_ID", type text}, {"Reference_Invoice_ID", Int64.Type}, {"Payer_Name", type text}, {"Deposit_Date", type datetime}, {"Value_Date", type datetime}, {"Amount_Received", type number}, {"Currency", type text}, {"Payment_Channel", type text}, {"Service_Charge", Int64.Type}, {"Bank_Memo", type text}, {"Batch_ID", type text}}),
+    #"Removed Other Columns" = Table.SelectColumns(#"Changed Type",{"Reference_Invoice_ID", "Payer_Name", "Deposit_Date", "Amount_Received", "Currency"}),
+    #"Reordered Columns" = Table.ReorderColumns(#"Removed Other Columns",{"Reference_Invoice_ID", "Payer_Name", "Amount_Received", "Currency", "Deposit_Date"}),
+    #"Renamed Columns" = Table.RenameColumns(#"Reordered Columns",{{"Reference_Invoice_ID", "recon_key"}, {"Payer_Name", "customer"}, {"Amount_Received", "amount"}, {"Currency", "currency"}, {"Deposit_Date", "transaction_date"}}),
+    #"Changed Type1" = Table.TransformColumnTypes(#"Renamed Columns",{{"recon_key", type text}, {"customer", type text}, {"amount", type number}, {"currency", type text}, {"transaction_date", type date}}),
+    #"Trimmed Text" = Table.TransformColumns(#"Changed Type1",{{"recon_key", Text.Trim, type text}, {"customer", Text.Trim, type text}, {"currency", Text.Trim, type text}})
+in
+    #"Trimmed Text"

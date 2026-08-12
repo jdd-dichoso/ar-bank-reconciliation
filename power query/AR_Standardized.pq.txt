@@ -1,0 +1,10 @@
+let
+    Source = Excel.CurrentWorkbook(){[Name="Table1"]}[Content],
+    #"Changed Type" = Table.TransformColumnTypes(Source,{{"Business_Unit", type text}, {"Customer_Number", type any}, {"Customer_Name", type text}, {"Invoice_ID", Int64.Type}, {"Invoice_Date", type datetime}, {"Due_Date", type datetime}, {"Invoice_Amount", type number}, {"Currency", type text}, {"Payment_Terms", type text}, {"Cleared_Date_System", type datetime}, {"AR_Note", type text}}),
+    #"Removed Other Columns" = Table.SelectColumns(#"Changed Type",{"Invoice_ID", "Customer_Name", "Invoice_Amount", "Currency", "Cleared_Date_System"}),
+    #"Renamed Columns" = Table.RenameColumns(#"Removed Other Columns",{{"Invoice_ID", "Recon_Key"}, {"Customer_Name", "Customer"}, {"Invoice_Amount", "Amount"}, {"Cleared_Date_System", "Transaction Date"}}),
+    #"Changed Type1" = Table.TransformColumnTypes(#"Renamed Columns",{{"Recon_Key", type text}, {"Amount", type number}, {"Transaction Date", type date}}),
+    #"Renamed Columns1" = Table.RenameColumns(#"Changed Type1",{{"Recon_Key", "recon_key"}, {"Customer", "customer"}, {"Amount", "amount"}, {"Currency", "currency"}, {"Transaction Date", "transaction_date"}}),
+    #"Trimmed Text" = Table.TransformColumns(#"Renamed Columns1",{{"recon_key", Text.Trim, type text}, {"customer", Text.Trim, type text}, {"currency", Text.Trim, type text}})
+in
+    #"Trimmed Text"
