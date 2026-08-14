@@ -122,6 +122,24 @@ The Excel Power Query + VBA implementation was validated against the same expect
 
 ![Validation Results](screenshots/Validation_ALL_PASS.png)
 
+## Power BI Dashboard
+
+The validated reconciliation output was also used as the data source for a one-page Power BI dashboard.
+
+The dashboard provides:
+
+- Total reconciliation keys
+- Matched and exception counts
+- Match rate
+- Exception breakdown
+- Discrepancy analysis
+- Interactive reconciliation-status filtering
+- Transaction-level investigation details
+
+This extends the project from reconciliation automation into management reporting and exception analysis.
+
+![Power BI Reconciliation Dashboard](screenshots/PowerBI_Dashboard.png)
+
 ## Technology
 
 - Microsoft Excel
