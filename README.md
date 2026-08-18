@@ -1,8 +1,8 @@
-# AR-to-Bank Reconciliation Automation
+# AI-Assisted AR-to-Bank Reconciliation Automation
 
-A personal finance automation project exploring how repetitive AR-to-bank reconciliation activities can be standardized and automated.
+A personal finance automation project exploring how repetitive AR-to-bank reconciliation activities can be standardized, automated, and supported by AI-assisted exception analysis.
 
-The project compares AR Ledger and Bank Remittance data, identifies matched transactions and reconciliation exceptions, and produces a structured reconciliation output for investigation.
+The project compares AR Ledger and Bank Remittance data using deterministic reconciliation rules, identifies matched transactions and exceptions, validates the results, and uses a locally hosted LLM to analyze exceptions, suggest likely causes, assign investigation priorities, and recommend next actions.
 
 ## Project Objective
 
@@ -16,13 +16,15 @@ The goal was to build a practical reconciliation prototype that can:
 - Apply a ±1-day date tolerance
 - Classify matched transactions and exceptions
 - Provide exception reasons and recommended actions
-- Validate the automated results against a controlled answer key
+- Validate the automated results against a controlled answer key after deterministic reconciliation
+- Use AI to assist with exception analysis after deterministic reconciliation
+- Generate structured likely-cause assessments, investigation priorities, recommended actions, explanations, and confidence levels
 
 All data used in the project is synthetic and was created specifically for testing and demonstration.
 
 ## Implementations
 
-The same reconciliation process was implemented using two approaches.
+The project was developed through several complementary implementations and layers, each serving a different purpose in the overall reconciliation process.
 
 ### 1. n8n + JavaScript
 
@@ -34,9 +36,12 @@ The workflow:
 2. Standardizes both sources into a common structure
 3. Groups transactions using a reconciliation key
 4. Applies deterministic reconciliation rules
-5. Identifies matches and exceptions
+5. Identifies matched transactions and reconciliation exceptions
 6. Validates results against a controlled answer key
 7. Generates reconciliation and summary outputs
+8. Filters identified exceptions for AI-assisted analysis
+9. Uses a locally hosted LLM to suggest likely causes, investigation priorities, recommended actions, explanations, and confidence levels
+10. Generates a structured AI-assisted exception report
 
 ### 2. Excel Power Query + VBA
 
@@ -56,7 +61,7 @@ The reconciliation was subsequently recreated in Excel to explore how the same p
 - Compare reconciliation attributes
 - Apply the ±1-day date tolerance
 - Classify exceptions
-- Generate investigation actions
+- Assign investigation status for identified exceptions
 - Validate the final results
 
 A `Run Reconciliation` button executes the VBA reconciliation process using the standardized Power Query outputs.
@@ -83,7 +88,7 @@ For normal 1-to-1 transactions, the remaining reconciliation attributes are comp
 
 ## Validation Results
 
-Both implementations were tested using the same controlled dataset.
+The deterministic n8n and Excel implementations were tested using the same controlled dataset and reconciliation rules.
 
 | Metric | Result |
 |---|---:|
@@ -102,6 +107,8 @@ Both implementations were tested using the same controlled dataset.
 
 The Excel Power Query + VBA implementation reproduced the validated n8n results across all tracked reconciliation metrics.
 
+All 731 reconciliation exceptions were subsequently processed through the AI-assisted exception analysis layer. The locally hosted LLM generated structured outputs for likely cause, investigation priority, recommended action, explanation, and confidence level without changing the underlying deterministic reconciliation status.
+
 ## Project Screenshots
 
 ### Excel Reconciliation Control
@@ -112,7 +119,7 @@ The Excel implementation uses Power Query for data preparation and VBA for the r
 
 ### Reconciliation Output
 
-The reconciliation output identifies matched records, structural exceptions, field-level discrepancies, exception reasons, and recommended investigation actions.
+The reconciliation output identifies matched records, structural exceptions, field-level discrepancies, exception reasons, and investigation status.
 
 ![Reconciliation Output](screenshots/Reconciliation_Output.png)
 
@@ -140,13 +147,31 @@ This extends the project from reconciliation automation into management reportin
 
 ![Power BI Reconciliation Dashboard](screenshots/PowerBI_Dashboard.png)
 
-## Technology
+### AI-Assisted Exception Analysis
+
+Reconciliation exceptions identified by the deterministic workflow are passed to a locally hosted LLM using Ollama and Qwen3 8B.
+
+The AI layer provides structured decision-support fields for each exception:
+
+- Likely cause
+- Investigation priority
+- Recommended action
+- Explanation
+- Confidence level
+
+The AI layer does not determine whether a transaction is matched or an exception. Reconciliation status remains controlled by the deterministic reconciliation rules.
+
+![AI-Assisted Exception Analysis](screenshots/AI_Exception_Analysis.png)
 
 - Microsoft Excel
 - Power Query
 - VBA
+- Power BI
 - n8n
 - JavaScript
+- Docker
+- Ollama
+- Qwen3 8B
 - CSV
 - GitHub
 
@@ -154,6 +179,15 @@ This extends the project from reconciliation automation into management reportin
 
 This is a personal proof-of-concept using controlled synthetic data.
 
-The objective is not to represent a production reconciliation system, but to demonstrate how repetitive reconciliation activities can be standardized, automated, validated, and structured for exception investigation.
+The objective is not to represent a production reconciliation system, but to demonstrate how repetitive reconciliation activities can be standardized, automated, validated, visualized, and supported by AI-assisted exception analysis.
 
-The core reconciliation logic remains deterministic to maintain consistency, auditability, and explainability.
+The core reconciliation logic remains deterministic to maintain consistency, auditability, and explainability. AI is applied only after exceptions have been identified and is used as decision support for likely-cause analysis, investigation priority, recommended actions, explanations, and confidence levels.
+
+AI-generated outputs should be treated as investigation assistance rather than confirmed accounting conclusions.
+
+## Key Limitations
+
+- The project uses synthetic data and is not connected to live ERP or banking systems.
+- The ±1-day date tolerance and other reconciliation rules are demonstration business rules.
+- AI-generated recommendations may vary and require human review.
+- The locally hosted LLM assists with exception investigation but does not alter reconciliation classifications.
