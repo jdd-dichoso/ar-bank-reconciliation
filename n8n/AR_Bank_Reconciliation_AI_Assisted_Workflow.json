@@ -1,0 +1,880 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -304,
+        -224
+      ],
+      "id": "c798948e-b8fb-4d39-963f-06f1e8056f8f",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        -352
+      ],
+      "id": "6fcae022-03d6-442e-8f52-5f9cd3e0a816",
+      "name": "Extract from File2"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        -80
+      ],
+      "id": "d4a89ed7-d794-41c0-8b97-007cc404495c",
+      "name": "Extract from File3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const arRecords = new Map();\nconst bankRecords = new Map();\n\nfor (const item of items) {\n  const data = item.json;\n  const key = String(data.recon_key).trim();\n\n  if (data.source === \"AR Ledger\") {\n    if (!arRecords.has(key)) {\n      arRecords.set(key, []);\n    }\n    arRecords.get(key).push(data);\n  }\n\n  if (data.source === \"Bank Remittance\") {\n    if (!bankRecords.has(key)) {\n      bankRecords.set(key, []);\n    }\n    bankRecords.get(key).push(data);\n  }\n}\n\nconst allKeys = new Set([\n  ...arRecords.keys(),\n  ...bankRecords.keys()\n]);\n\nconst results = [];\n\nfor (const key of allKeys) {\n  const ar = arRecords.get(key) || [];\n  const bank = bankRecords.get(key) || [];\n\n  results.push({\n    json: {\n      recon_key: key,\n\n      exists_in_ar: ar.length > 0,\n      exists_in_bank: bank.length > 0,\n\n      ar_count: ar.length,\n      bank_count: bank.length,\n\n      ar_records: ar,\n      bank_records: bank\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        -240
+      ],
+      "id": "4bcbd0f0-f06c-4972-819c-23882fde5103",
+      "name": "Code - Key Analysis"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of items) {\n  const data = item.json;\n\n  const existsInAR = data.exists_in_ar;\n  const existsInBank = data.exists_in_bank;\n\n  const arCount = data.ar_count;\n  const bankCount = data.bank_count;\n\n  // --------------------------------------------------\n  // CASE 1: AR only\n  // --------------------------------------------------\n  if (existsInAR && !existsInBank) {\n    results.push({\n      json: {\n        ...data,\n        key_match: false,\n        final_status: \"EXCEPTION\",\n        exception_reason: \"Transaction Present in AR Only\",\n        action: \"For Investigation\"\n      }\n    });\n\n    continue;\n  }\n\n  // --------------------------------------------------\n  // CASE 2: Bank only\n  // --------------------------------------------------\n  if (!existsInAR && existsInBank) {\n    results.push({\n      json: {\n        ...data,\n        key_match: false,\n        final_status: \"EXCEPTION\",\n        exception_reason: \"Transaction Present in Bank Only\",\n        action: \"For Investigation\"\n      }\n    });\n\n    continue;\n  }\n\n  // --------------------------------------------------\n  // CASE 3: Duplicate in both sources\n  // --------------------------------------------------\n  if (arCount > 1 && bankCount > 1) {\n    results.push({\n      json: {\n        ...data,\n        key_match: true,\n        duplicate_ar: true,\n        duplicate_bank: true,\n        final_status: \"EXCEPTION\",\n        exception_reason: \"Duplicate Entry in Both Sources\",\n        action: \"For Investigation\"\n      }\n    });\n\n    continue;\n  }\n\n  // --------------------------------------------------\n  // CASE 4: Duplicate AR\n  // --------------------------------------------------\n  if (arCount > 1 && bankCount === 1) {\n    results.push({\n      json: {\n        ...data,\n        key_match: true,\n        duplicate_ar: true,\n        duplicate_bank: false,\n        final_status: \"EXCEPTION\",\n        exception_reason: \"Duplicate AR Entry\",\n        action: \"For Investigation\"\n      }\n    });\n\n    continue;\n  }\n\n  // --------------------------------------------------\n  // CASE 5: Duplicate Bank\n  // --------------------------------------------------\n  if (arCount === 1 && bankCount > 1) {\n    results.push({\n      json: {\n        ...data,\n        key_match: true,\n        duplicate_ar: false,\n        duplicate_bank: true,\n        final_status: \"EXCEPTION\",\n        exception_reason: \"Duplicate Bank Entry\",\n        action: \"For Investigation\"\n      }\n    });\n\n    continue;\n  }\n\n  // --------------------------------------------------\n  // CASE 6: Clean 1-to-1 transaction\n  // --------------------------------------------------\n  if (\n    arCount === 1 &&\n    bankCount === 1 &&\n    existsInAR &&\n    existsInBank\n  ) {\n    const ar = data.ar_records[0];\n    const bank = data.bank_records[0];\n\n    // Amount\n    const amount_match =\n      Number(ar.amount) === Number(bank.amount);\n\n    // Currency\n    const currency_match =\n      ar.currency === bank.currency;\n\n    // Customer\n    const customer_match =\n      ar.customer === bank.customer;\n\n    // Date with ±1 day tolerance\n // Date with ±1 day tolerance\nconst arDateValue = ar.transaction_date;\nconst bankDateValue = bank.transaction_date;\n\nconst arDate = new Date(`${arDateValue}T00:00:00Z`);\nconst bankDate = new Date(`${bankDateValue}T00:00:00Z`);\n\nconst differenceInDays =\n  Math.abs(arDate - bankDate) / (1000 * 60 * 60 * 24);\n\nconst date_match = differenceInDays <= 1;\n\n    const allAttributesMatch =\n      amount_match &&\n      currency_match &&\n      customer_match &&\n      date_match;\n\n    results.push({\n      json: {\n        recon_key: data.recon_key,\n\n        ar_count: arCount,\n        bank_count: bankCount,\n\n        key_match: true,\n\n        amount_match,\n        currency_match,\n        customer_match,\n        date_match,\n\n\n        duplicate_ar: false,\n        duplicate_bank: false,\n\n        final_status: allAttributesMatch\n          ? \"MATCHED\"\n          : \"EXCEPTION\",\n\n        action: allAttributesMatch\n          ? \"\"\n          : \"For Investigation\"\n      }\n    });\n\n    continue;\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        -240
+      ],
+      "id": "0ac793e1-6112-41e1-8ed3-d901a8dea1c6",
+      "name": "Code - Account Reconcilaition"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of items) {\n  const data = item.json;\n\n  const exceptionReasons = [];\n\n  // Attribute discrepancies\n  if (data.amount_match === false) {\n    exceptionReasons.push(\"Amount discrepancy\");\n  }\n\n  if (data.currency_match === false) {\n    exceptionReasons.push(\"Currency discrepancy\");\n  }\n\n  if (data.customer_match === false) {\n    exceptionReasons.push(\"Customer discrepancy\");\n  }\n\n  if (data.date_match === false) {\n    exceptionReasons.push(\"Date discrepancy\");\n  }\n\n  // Keep existing structural exception reason\n  if (data.exception_reason) {\n    exceptionReasons.push(data.exception_reason);\n  }\n\n  // Remove duplicate reason entries\n  const uniqueReasons = [...new Set(exceptionReasons)];\n\n  results.push({\n    json: {\n      recon_key: data.recon_key,\n\n      ar_count: data.ar_count,\n      bank_count: data.bank_count,\n\n      key_match: data.key_match,\n\n      amount_match: data.amount_match ?? null,\n      currency_match: data.currency_match ?? null,\n      customer_match: data.customer_match ?? null,\n      date_match: data.date_match ?? null,\n\n      duplicate_ar: data.duplicate_ar ?? false,\n      duplicate_bank: data.duplicate_bank ?? false,\n\n      final_status: data.final_status,\n\n      exception_reason:\n        uniqueReasons.length > 0\n          ? uniqueReasons.join(\"; \")\n          : \"\",\n\n      action:\n        data.final_status === \"EXCEPTION\"\n          ? \"For Investigation\"\n          : \"\"\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        -240
+      ],
+      "id": "5918ee4e-4a24-46da-a712-7dce6f9a5821",
+      "name": "Code - Final Reconciliation"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/files/input/Answer_Key_SelfValidation_Test.csv",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        816,
+        80
+      ],
+      "id": "30cc53cd-4fd1-4721-a352-0a6bc137c314",
+      "name": "Read/Write - AnswerKey"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        1024,
+        80
+      ],
+      "id": "786cdf02-1107-46e0-9dcd-a156990ae696",
+      "name": "Extract from File4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of items) {\n  const data = item.json;\n\n  let expectedRule = \"\";\n  let validationStatus = \"\";\n\n  switch (data.test_scenario) {\n\n    case \"Normal match\":\n      expectedRule =\n      data.ar_count === 1 &&\n      data.bank_count === 1 &&\n      data.amount_match === true &&\n      data.currency_match === true &&\n      data.customer_match === true &&\n      data.date_match === true &&\n      data.duplicate_ar === false &&\n      data.duplicate_bank === false;\n\n      validationStatus = expectedRule ? \"PASS\" : \"REVIEW\";\n  break;\n\n    case \"Customer/payer discrepancy\":\n      expectedRule = data.customer_match === false;\n      validationStatus = expectedRule ? \"PASS\" : \"REVIEW\";\n      break;\n\n    case \"Currency discrepancy\":\n      expectedRule = data.currency_match === false;\n      validationStatus = expectedRule ? \"PASS\" : \"REVIEW\";\n      break;\n\n    case \"Amount discrepancy\":\n      expectedRule = data.amount_match === false;\n      validationStatus = expectedRule ? \"PASS\" : \"REVIEW\";\n      break;\n\n    case \"Missing bank transaction\":\n      expectedRule =\n      data.ar_count > 0 &&\n      data.bank_count === 0;\n      validationStatus = expectedRule ? \"PASS\" : \"REVIEW\";\n    break;\n\n    case \"Duplicate AR transaction\":\n      expectedRule = data.duplicate_ar === true;\n      validationStatus = expectedRule ? \"PASS\" : \"REVIEW\";\n      break;\n\n    case \"Duplicate bank transaction\":\n      expectedRule = data.duplicate_bank === true;\n      validationStatus = expectedRule ? \"PASS\" : \"REVIEW\";\n      break;\n\n    case \"Unmatched bank transaction\":\n      expectedRule =\n      data.ar_count === 0 &&\n      data.bank_count > 0;\n      validationStatus = expectedRule ? \"PASS\" : \"REVIEW\";\n    break;\n\n    default:\n      validationStatus = \"UNKNOWN SCENARIO\";\n  }\n\n  results.push({\n  json: {\n    ...data,\n    validation_status: validationStatus,\n\n  }\n});\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        -128
+      ],
+      "id": "a62f82a7-0a70-47c6-b2ba-263850d96baa",
+      "name": "Code - Final Validation Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const data = item.json;\n\n  return {\n    json: {\n      recon_key: data.recon_key,\n      ar_count: data.ar_count,\n      bank_count: data.bank_count,\n      key_match: data.key_match,\n      amount_match: data.amount_match,\n      currency_match: data.currency_match,\n      customer_match: data.customer_match,\n      date_match: data.date_match,\n      duplicate_ar: data.duplicate_ar,\n      duplicate_bank: data.duplicate_bank,\n      final_status: data.final_status,\n      exception_reason: data.exception_reason || \"\",\n      action: data.action || \"\"\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1872,
+        -128
+      ],
+      "id": "3db1032d-7d86-405f-b709-3118691cdfec",
+      "name": "Code - Final Report"
+    },
+    {
+      "parameters": {
+        "jsCode": "const summary = {\n  total_reconciliation_keys: items.length,\n  matched: 0,\n  exceptions: 0,\n  ar_only: 0,\n  bank_only: 0,\n  duplicate_ar: 0,\n  duplicate_bank: 0,\n  duplicate_both: 0,\n  amount_discrepancy: 0,\n  currency_discrepancy: 0,\n  customer_discrepancy: 0,\n  date_discrepancy: 0\n};\n\nfor (const item of items) {\n  const data = item.json;\n\n  if (data.final_status === \"MATCHED\") {\n    summary.matched++;\n  } else if (data.final_status === \"EXCEPTION\") {\n    summary.exceptions++;\n  }\n\n  if (data.exception_reason?.includes(\"AR Only\")) {\n    summary.ar_only++;\n  }\n\n  if (data.exception_reason?.includes(\"Bank Only\")) {\n    summary.bank_only++;\n  }\n\n  if (data.exception_reason?.includes(\"Duplicate AR\")) {\n    summary.duplicate_ar++;\n  }\n\n  if (data.exception_reason?.includes(\"Duplicate Bank\")) {\n    summary.duplicate_bank++;\n  }\n\n  if (data.exception_reason?.includes(\"Duplicate Entry in Both\")) {\n    summary.duplicate_both++;\n  }\n\n  if (data.exception_reason?.includes(\"Amount discrepancy\")) {\n    summary.amount_discrepancy++;\n  }\n\n  if (data.exception_reason?.includes(\"Currency discrepancy\")) {\n    summary.currency_discrepancy++;\n  }\n\n  if (data.exception_reason?.includes(\"Customer discrepancy\")) {\n    summary.customer_discrepancy++;\n  }\n\n  if (data.exception_reason?.includes(\"Date discrepancy\")) {\n    summary.date_discrepancy++;\n  }\n}\n\nreturn [{ json: summary }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        80
+      ],
+      "id": "8ccf2408-3de6-4dda-9859-55309aedb427",
+      "name": "Code - Reconciliation Summary"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f08c7c9b-ed3a-4cf1-9d6f-404f592a0ea7",
+              "leftValue": "={{ $json.final_status }}",
+              "rightValue": "EXCEPTION",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1552,
+        -512
+      ],
+      "id": "b1234e5c-fcee-4a9f-99a3-66f304916f47",
+      "name": "Filter - Exceptions for AI"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/files/input/ReportA_AR_Ledger_Test.csv",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -64,
+        -352
+      ],
+      "id": "d72017e7-8621-42c8-a972-648a2213ca7e",
+      "name": "Read/Write ReportA_AR Ledger_Test"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/files/input/ReportB_Bank_Remittance_Test.csv",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -64,
+        -80
+      ],
+      "id": "c239ef3f-7b36-4326-9113-be17952803f1",
+      "name": "Read/Write ReportB_Bank Remittance_Test"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const data = item.json;\n\n  return {\n    json: {\n      recon_key: data.Reference_Invoice_ID,\n      customer: data.Payer_Name,\n      amount: Number(data.Amount_Received),\n      currency: data.Currency,\n      transaction_date: data.Deposit_Date,\n      source: \"Bank Remittance\"\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -80
+      ],
+      "id": "2cccb0a5-bef0-4f14-8810-b6922761a82c",
+      "name": "Code - Standardize Remittance Report"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const data = item.json;\n\n  return {\n    json: {\n      recon_key: data.Invoice_ID,\n      customer: data.Customer_Name,\n      amount: Number(data.Invoice_Amount),\n      currency: data.Currency,\n      transaction_date: data.Cleared_Date_System,\n      source: \"AR Ledger\"\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -352
+      ],
+      "id": "6568d57f-0b47-410c-8871-e3c39dd560eb",
+      "name": "Code - Standardize AR Ledger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const counts = {};\n\nfor (const item of items) {\n  const key = String(item.json.recon_key).trim();\n  counts[key] = (counts[key] || 0) + 1;\n}\n\nreturn items.map(item => {\n  const key = String(item.json.recon_key).trim();\n\n  return {\n    json: {\n      ...item.json,\n      is_duplicate: counts[key] > 1\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        -352
+      ],
+      "id": "5bc89770-3626-434c-a7ad-830a6c76814c",
+      "name": "Code - Dupe Detection AR"
+    },
+    {
+      "parameters": {
+        "jsCode": "const counts = {};\n\nfor (const item of items) {\n  const key = String(item.json.recon_key).trim();\n  counts[key] = (counts[key] || 0) + 1;\n}\n\nreturn items.map(item => {\n  const key = String(item.json.recon_key).trim();\n\n  return {\n    json: {\n      ...item.json,\n      is_duplicate: counts[key] > 1\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        -80
+      ],
+      "id": "5b922aa8-fa82-45ca-bda7-40c5e960bfeb",
+      "name": "Code - Dupe Detection Bank"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        832,
+        -240
+      ],
+      "id": "a72ab8b8-969a-4ab4-8f2a-343bdca0845a",
+      "name": "Merge Report AR and Bank"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "advanced": true,
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "recon_key",
+              "field2": "recon_key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1552,
+        64
+      ],
+      "id": "686826d1-4de5-4bbc-83d8-e31e5248898b",
+      "name": "Merge Standardized AR,Bank andd AnswerKey"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of items) {\n  const data = item.json;\n\n  results.push({\n    json: {\n      recon_key: String(data.Invoice_ID),\n      test_scenario: data.Test_Scenario\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        80
+      ],
+      "id": "3b78f546-4e9d-4939-9f10-4c47553fe972",
+      "name": "Code - Standardize Answser Key"
+    },
+    {
+      "parameters": {
+        "options": {
+          "fileName": "Final_Reconciliation_Report.csv"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2048,
+        -128
+      ],
+      "id": "4e48e49b-df46-42bd-aa6b-94897bace9f0",
+      "name": "Convert Final Report to File"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Likely Cause:\nPossible settlement or posting timing difference\n\nPriority:\nLOW\n\nRecommended Action:\nCompare the AR posting date with the bank settlement date and\nconfirm whether the timing difference is expected.\n\nExplanation:\nThe transaction exists once in both sources and the amount,\ncurrency, and customer information agree, but the transaction\ndates do not meet the configured reconciliation tolerance.\n\nConfidence:\nHIGH\n\nException Reason: {{ $json.exception_reason }}\n\nIMPORTANT:\nYour analysis must be specific to the Exception Reason above.\nDo not give a date-discrepancy explanation unless the exception actually includes a date discrepancy.\nFor duplicate, missing-source, amount, currency, or customer exceptions, tailor the likely cause and recommended action to that issue.",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": []
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2032,
+        -512
+      ],
+      "id": "3f7e6f31-faaa-40e1-8d76-0c42f8892ac3",
+      "name": "AI - Exception Analysis"
+    },
+    {
+      "parameters": {
+        "model": "qwen3:8b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        2064,
+        -288
+      ],
+      "id": "920b7d04-c48e-4613-bb91-5c62167bb5a3",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "tmPQY15vn5aU8cqz",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"ai_likely_cause\": \"Possible timing difference between AR posting and bank processing\",\n  \"ai_priority\": \"LOW\",\n  \"ai_recommended_action\": \"Compare the AR transaction date and bank transaction date and verify whether the timing difference is expected.\",\n  \"ai_explanation\": \"The amount, currency, and customer match, while the transaction date falls outside the configured tolerance.\",\n  \"ai_confidence\": \"HIGH\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2592,
+        -224
+      ],
+      "id": "554f7bff-8222-4fc3-862f-be81105ace7f",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2272,
+        -704
+      ],
+      "id": "7eab0a95-918f-4b69-ae05-3b0fe82d2bc1",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9b48e3d5-20b3-4146-ace9-7c8c767a02dc",
+              "name": "ai_likely_cause",
+              "value": "={{ $json.output.ai_likely_cause }}",
+              "type": "string"
+            },
+            {
+              "id": "dd2ce7c0-d735-4355-a829-a3258d5e128f",
+              "name": "ai_priority",
+              "value": "={{ $json.output.ai_priority }}",
+              "type": "string"
+            },
+            {
+              "id": "cf49b96b-8502-4bcd-a2ff-7753c11207bf",
+              "name": "ai_recommended_action",
+              "value": "={{ $json.output.ai_recommended_action }}",
+              "type": "string"
+            },
+            {
+              "id": "ac67b411-939a-4511-a44a-bc2480d3a887",
+              "name": "ai_explanation",
+              "value": "={{ $json.output.ai_explanation }}",
+              "type": "string"
+            },
+            {
+              "id": "466ec76d-2332-4ebb-906a-5756aecfe40b",
+              "name": "ai_confidence",
+              "value": "={{ $json.output.ai_confidence }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2464,
+        -704
+      ],
+      "id": "ab49caf7-55d0-4ecc-bd20-bcd9b6c91d21",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "maxItems": 731
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1776,
+        -512
+      ],
+      "id": "b6a8503d-ca95-4dd0-bd62-9e0bca725821",
+      "name": "Limit - AI Run Size"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        -400
+      ],
+      "id": "02245715-21ed-47da-a294-8d6c928b29ef",
+      "name": "Auto-fixing Output Parser"
+    },
+    {
+      "parameters": {
+        "model": "qwen3:8b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        -224
+      ],
+      "id": "cca0044c-0a77-45f5-b515-adc2a813bbc5",
+      "name": "Ollama Chat Model1",
+      "credentials": {
+        "ollamaApi": {
+          "id": "tmPQY15vn5aU8cqz",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2720,
+        -704
+      ],
+      "id": "d297c842-51b6-492f-8344-49216c46ce18",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "options": {
+          "fileName": "Reconciliation_Summary.csv"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2240,
+        80
+      ],
+      "id": "c6d16c68-2c6d-4925-810d-60a0746f0620",
+      "name": "Convert Recon Summary to File"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Read/Write ReportA_AR Ledger_Test",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read/Write ReportB_Bank Remittance_Test",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read/Write - AnswerKey",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File2": {
+      "main": [
+        [
+          {
+            "node": "Code - Standardize AR Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File3": {
+      "main": [
+        [
+          {
+            "node": "Code - Standardize Remittance Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Key Analysis": {
+      "main": [
+        [
+          {
+            "node": "Code - Account Reconcilaition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Account Reconcilaition": {
+      "main": [
+        [
+          {
+            "node": "Code - Final Reconciliation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Final Reconciliation": {
+      "main": [
+        [
+          {
+            "node": "Merge Standardized AR,Bank andd AnswerKey",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter - Exceptions for AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write - AnswerKey": {
+      "main": [
+        [
+          {
+            "node": "Extract from File4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File4": {
+      "main": [
+        [
+          {
+            "node": "Code - Standardize Answser Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Final Validation Code": {
+      "main": [
+        [
+          {
+            "node": "Code - Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Final Report": {
+      "main": [
+        [
+          {
+            "node": "Code - Reconciliation Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert Final Report to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Reconciliation Summary": {
+      "main": [
+        [
+          {
+            "node": "Convert Recon Summary to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write ReportA_AR Ledger_Test": {
+      "main": [
+        [
+          {
+            "node": "Extract from File2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write ReportB_Bank Remittance_Test": {
+      "main": [
+        [
+          {
+            "node": "Extract from File3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Standardize Remittance Report": {
+      "main": [
+        [
+          {
+            "node": "Code - Dupe Detection Bank",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Standardize AR Ledger": {
+      "main": [
+        [
+          {
+            "node": "Code - Dupe Detection AR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Dupe Detection AR": {
+      "main": [
+        [
+          {
+            "node": "Merge Report AR and Bank",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Dupe Detection Bank": {
+      "main": [
+        [
+          {
+            "node": "Merge Report AR and Bank",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Report AR and Bank": {
+      "main": [
+        [
+          {
+            "node": "Code - Key Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Standardized AR,Bank andd AnswerKey": {
+      "main": [
+        [
+          {
+            "node": "Code - Final Validation Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Standardize Answser Key": {
+      "main": [
+        [
+          {
+            "node": "Merge Standardized AR,Bank andd AnswerKey",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Filter - Exceptions for AI": {
+      "main": [
+        [
+          {
+            "node": "Limit - AI Run Size",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI - Exception Analysis",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Auto-fixing Output Parser",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI - Exception Analysis": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit - AI Run Size": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AI - Exception Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-fixing Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI - Exception Analysis",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Auto-fixing Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "04feae9b-099e-4002-8541-e5442afb925f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1b320d781e314f83b8e612f44aadc2094c5f3dad930817f0458ff58520e1a069"
+  },
+  "nodeGroups": [],
+  "id": "zrfZ3TxVXYImDxfi",
+  "tags": []
+}
