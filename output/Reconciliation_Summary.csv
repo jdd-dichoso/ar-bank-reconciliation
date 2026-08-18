@@ -1,0 +1,2 @@
+﻿total_reconciliation_keys,matched,exceptions,ar_only,bank_only,duplicate_ar,duplicate_bank,duplicate_both,amount_discrepancy,currency_discrepancy,customer_discrepancy,date_discrepancy
+1096,365,731,62,43,31,38,0,53,59,67,470
